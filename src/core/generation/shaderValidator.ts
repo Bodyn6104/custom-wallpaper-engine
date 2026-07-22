@@ -18,28 +18,42 @@ export function compileFragmentShader(source: string): CompileResult {
     return { success: false, error: 'Failed to create headless WebGL context' };
   }
 
-  const vs = gl.createShader(gl.VERTEX_SHADER)!;
-  gl.shaderSource(vs, VERTEX_SHADER);
-  gl.compileShader(vs);
+  let vs: WebGLShader | null = null;
+  let fs: WebGLShader | null = null;
+  let program: WebGLProgram | null = null;
 
-  const fs = gl.createShader(gl.FRAGMENT_SHADER)!;
-  gl.shaderSource(fs, source);
-  gl.compileShader(fs);
+  try {
+    vs = gl.createShader(gl.VERTEX_SHADER)!;
+    gl.shaderSource(vs, VERTEX_SHADER);
+    gl.compileShader(vs);
 
-  if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
-    const error = gl.getShaderInfoLog(fs) || 'Unknown compile error';
-    return { success: false, error };
+    fs = gl.createShader(gl.FRAGMENT_SHADER)!;
+    gl.shaderSource(fs, source);
+    gl.compileShader(fs);
+
+    if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+      const error = gl.getShaderInfoLog(fs) || 'Unknown compile error';
+      return { success: false, error };
+    }
+
+    program = gl.createProgram()!;
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      const error = gl.getProgramInfoLog(program) || 'Unknown link error';
+      return { success: false, error };
+    }
+
+    return { success: true };
+  } finally {
+    // Clean up GL resources on every return path
+    if (vs) gl.deleteShader(vs);
+    if (fs) gl.deleteShader(fs);
+    if (program) gl.deleteProgram(program);
+
+    // Destroy the GL context
+    gl.getExtension('STACKGL_destroy_context')?.destroy();
   }
-
-  const program = gl.createProgram()!;
-  gl.attachShader(program, vs);
-  gl.attachShader(program, fs);
-  gl.linkProgram(program);
-
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const error = gl.getProgramInfoLog(program) || 'Unknown link error';
-    return { success: false, error };
-  }
-
-  return { success: true };
 }
