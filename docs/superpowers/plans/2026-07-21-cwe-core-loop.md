@@ -180,7 +180,7 @@ data/
 npm install
 npx tsc --noEmit
 ```
-Expected: `npm install` completes without errors; `tsc --noEmit` prints nothing (no files to check yet is fine, exit code 0).
+Expected: `npm install` completes without errors. `tsc --noEmit` will report `error TS18003: No inputs found` (exit code non-zero) — this is expected and fine at this stage: the `include` globs (`src`, `scripts`, `tests`) don't have any files yet, since those arrive in Task 3 onward. Do not add a placeholder file to work around this; it isn't needed and Task 3 immediately populates `src/core`.
 
 - [ ] **Step 6: Commit**
 
