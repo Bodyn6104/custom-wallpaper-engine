@@ -12,6 +12,14 @@
 
 ## Global Constraints
 
+- **M0 is complete.** Findings are recorded in `docs/superpowers/plans/m0-validation-notes.md`
+  and `scripts/lively-cli-config.json` — read the notes file before starting Task 2,
+  it corrects several assumptions the rest of this plan was originally written
+  with (now already folded into the task text below, but the notes file has the
+  full reasoning). In particular: Lively packages must be written directly into
+  `%LOCALAPPDATA%\Lively Wallpaper\Library\wallpapers\<id>\` (not an arbitrary
+  path), `LivelyInfo.json` is required and has a specific schema, and
+  `LivelyProperties.json` color values are `"#RRGGBB"` hex strings, not arrays.
 - Windows 11 only (per spec Non-Goals).
 - Shaders are GLSL ES 1.00, WebGL1 baseline (per spec Generation Engine contract) — do not target WebGL2-only features.
 - Every uniform contract includes `iTime` (float, seconds) and `iResolution` (vec2, pixels) at minimum.
@@ -189,7 +197,7 @@ git commit -m "Scaffold TypeScript + Vitest project"
 - Test: `tests/desktop/livelyPackage.test.ts`
 
 **Interfaces:**
-- Produces: `ShaderParam`, `GenerationResult`, `GenerationFailedError` (from `types.ts`) — consumed by every later task in `src/core`. `buildLivelyPackage(result, outDir)` and `buildLivelyProperties(params)` (from `livelyPackage.ts`) — consumed by Task 13 (main process apply handler).
+- Produces: `ShaderParam`, `GenerationResult`, `GenerationFailedError` (from `types.ts`) — consumed by every later task in `src/core`. `buildLivelyPackage(result, outDir)`, `buildLivelyProperties(params)`, and `buildLivelyInfo(result)` (from `livelyPackage.ts`) — consumed by Task 13 (main process apply handler).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -206,7 +214,7 @@ const fixture: GenerationResult = {
   shaderCode: 'void main() { gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); }',
   params: [
     { name: 'speed', type: 'float', min: 0, max: 3, default: 1, label: 'Speed' },
-    { name: 'tint', type: 'color', default: [1, 0, 0], label: 'Tint' },
+    { name: 'tint', type: 'color', default: '#C0C0C0', label: 'Tint' },
   ],
   suggestedTitle: 'Test Scene',
   isAnimated: true,
@@ -223,17 +231,34 @@ afterEach(() => {
 });
 
 describe('buildLivelyPackage', () => {
-  it('writes shader.frag, index.html, and LivelyProperties.json', () => {
+  it('writes shader.frag, index.html, LivelyProperties.json, and LivelyInfo.json', () => {
     buildLivelyPackage(fixture, outDir);
     expect(fs.existsSync(path.join(outDir, 'shader.frag'))).toBe(true);
     expect(fs.existsSync(path.join(outDir, 'index.html'))).toBe(true);
     expect(fs.existsSync(path.join(outDir, 'LivelyProperties.json'))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, 'LivelyInfo.json'))).toBe(true);
   });
 
   it('embeds the shader source in index.html', () => {
     buildLivelyPackage(fixture, outDir);
     const html = fs.readFileSync(path.join(outDir, 'index.html'), 'utf-8');
     expect(html).toContain('gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0)');
+  });
+
+  it('writes a LivelyInfo.json with the required fields, matching a verified real Lively package', () => {
+    buildLivelyPackage(fixture, outDir);
+    const info = JSON.parse(fs.readFileSync(path.join(outDir, 'LivelyInfo.json'), 'utf-8'));
+    expect(info.Type).toBe(1);
+    expect(info.FileName).toBe('index.html');
+    expect(info.Title).toBe(fixture.suggestedTitle);
+    expect(info.Thumbnail).toBe('thumbnail.jpg');
+    expect(info.Preview).toBe('preview.jpg');
+  });
+
+  it('writes non-empty thumbnail and preview image files (LivelyInfo.json references must resolve to real files)', () => {
+    buildLivelyPackage(fixture, outDir);
+    expect(fs.statSync(path.join(outDir, 'thumbnail.jpg')).size).toBeGreaterThan(0);
+    expect(fs.statSync(path.join(outDir, 'preview.jpg')).size).toBeGreaterThan(0);
   });
 });
 
@@ -243,9 +268,9 @@ describe('buildLivelyProperties', () => {
     expect(props.speed).toEqual({ type: 'slider', value: 1, min: 0, max: 3, text: 'Speed' });
   });
 
-  it('maps a color param to a color entry', () => {
+  it('maps a color param to a color entry with a hex string value (Lively requires "#RRGGBB", not an array)', () => {
     const props = buildLivelyProperties(fixture.params);
-    expect(props.tint).toEqual({ type: 'color', value: [1, 0, 0], min: undefined, max: undefined, text: 'Tint' });
+    expect(props.tint).toEqual({ type: 'color', value: '#C0C0C0', min: undefined, max: undefined, text: 'Tint' });
   });
 });
 ```
@@ -268,7 +293,8 @@ export interface ShaderParam {
   type: ParamType;
   min?: number;
   max?: number;
-  default: number | string | number[] | boolean;
+  /** For 'color' params this is a "#RRGGBB" hex string (Lively's LivelyProperties.json convention) — never an [r,g,b] array. */
+  default: number | string | boolean;
   label: string;
 }
 
@@ -295,6 +321,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { GenerationResult, ShaderParam } from '../generation/types';
 
+// 1x1 red JPEG. LivelyInfo.json's Thumbnail/Preview fields must reference files
+// that actually exist — M0 confirmed Lively fails package validation otherwise.
+const PLACEHOLDER_JPEG_BASE64 =
+  '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=';
+
 export function buildLivelyPackage(result: GenerationResult, outDir: string): void {
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, 'shader.frag'), result.shaderCode, 'utf-8');
@@ -304,6 +335,33 @@ export function buildLivelyPackage(result: GenerationResult, outDir: string): vo
     JSON.stringify(buildLivelyProperties(result.params), null, 2),
     'utf-8'
   );
+  fs.writeFileSync(
+    path.join(outDir, 'LivelyInfo.json'),
+    JSON.stringify(buildLivelyInfo(result), null, 2),
+    'utf-8'
+  );
+  const placeholder = Buffer.from(PLACEHOLDER_JPEG_BASE64, 'base64');
+  fs.writeFileSync(path.join(outDir, 'thumbnail.jpg'), placeholder);
+  fs.writeFileSync(path.join(outDir, 'preview.jpg'), placeholder);
+}
+
+// Schema verified in M0 against a real shipped Lively package
+// (rocksdanister/WebGL-Fluid-Simulation, "lively" branch, LivelyInfo.json).
+// Type: 1 = web/HTML wallpaper.
+export function buildLivelyInfo(result: GenerationResult): Record<string, unknown> {
+  return {
+    AppVersion: '2.2.1.0',
+    Title: result.suggestedTitle,
+    Thumbnail: 'thumbnail.jpg',
+    Preview: 'preview.jpg',
+    Desc: 'Generated by Custom Wallpaper Engine',
+    Author: 'CWE',
+    License: '',
+    Contact: '',
+    Type: 1,
+    Arguments: '',
+    FileName: 'index.html',
+  };
 }
 
 export function buildLivelyProperties(params: ShaderParam[]): Record<string, unknown> {
@@ -335,7 +393,8 @@ function buildIndexHtml(result: GenerationResult): string {
 
   const uniformSetters = result.params
     .map((p) => {
-      if (p.type === 'color') return `  if (uniformLocs['${p.name}']) gl.uniform3fv(uniformLocs['${p.name}'], values['${p.name}']);`;
+      if (p.type === 'color')
+        return `  if (uniformLocs['${p.name}']) gl.uniform3fv(uniformLocs['${p.name}'], hexToVec3(values['${p.name}']));`;
       if (p.type === 'bool') return `  if (uniformLocs['${p.name}']) gl.uniform1i(uniformLocs['${p.name}'], values['${p.name}'] ? 1 : 0);`;
       return `  if (uniformLocs['${p.name}']) gl.uniform1f(uniformLocs['${p.name}'], values['${p.name}']);`;
     })
@@ -367,6 +426,17 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 resize();
+
+// Lively's LivelyProperties.json color values are "#RRGGBB" hex strings, not
+// [r,g,b] arrays (verified in M0 against real shipped packages) — convert here.
+function hexToVec3(hex) {
+  const v = (hex || '#000000').replace('#', '');
+  return [
+    parseInt(v.substring(0, 2), 16) / 255,
+    parseInt(v.substring(2, 4), 16) / 255,
+    parseInt(v.substring(4, 6), 16) / 255,
+  ];
+}
 
 const vsSource = 'attribute vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }';
 const fsSource = document.getElementById('frag').textContent;
@@ -430,7 +500,7 @@ requestAnimationFrame(frame);
 ```bash
 npx vitest run tests/desktop/livelyPackage.test.ts
 ```
-Expected: PASS (4 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 6: Commit**
 
@@ -578,6 +648,17 @@ import { buildLivelyPackage } from '../src/core/desktop/livelyPackage';
 import { loadLivelyCliConfig, setWallpaper } from '../src/core/desktop/livelyCli';
 import type { GenerationResult } from '../src/core/generation/types';
 
+// M0 confirmed: Lively's `setwp --file` only recognizes packages that already
+// live inside its own Library folder — an arbitrary external path is silently
+// a no-op (no error, nothing in Lively's logs). See docs/superpowers/plans/m0-validation-notes.md.
+function livelyLibraryWallpapersDir(): string {
+  const localAppData = process.env.LOCALAPPDATA;
+  if (!localAppData) {
+    throw new Error('LOCALAPPDATA environment variable is not set');
+  }
+  return path.join(localAppData, 'Lively Wallpaper', 'Library', 'wallpapers');
+}
+
 async function main() {
   const shaderCode = fs.readFileSync(path.join('scripts', 'fixtures', 'test-shader.frag'), 'utf-8');
   const result: GenerationResult = {
@@ -587,12 +668,12 @@ async function main() {
     isAnimated: true,
   };
 
-  const outDir = path.join('data', 'manual-test-package');
+  const outDir = path.join(livelyLibraryWallpapersDir(), 'cwe-m1-mechanical-test');
   buildLivelyPackage(result, outDir);
   console.log(`Package written to ${outDir}`);
 
   const config = loadLivelyCliConfig(path.join('scripts', 'lively-cli-config.json'));
-  await setWallpaper(config, path.resolve(outDir));
+  await setWallpaper(config, outDir);
   console.log('Applied via Lively CLI — check your desktop.');
 }
 
@@ -784,6 +865,8 @@ function buildSystemPrompt(): string {
     'Always use the uniforms uniform float iTime; and uniform vec2 iResolution;.',
     'Always call the emit_wallpaper_shader tool with your result — never respond in plain text.',
     'Define 3-6 tunable params (floats/colors/bools) that meaningfully control the look (speed, contrast, color, fog, etc).',
+    'Param names must start with a lowercase letter (this is a hard requirement of the wallpaper engine this feeds into).',
+    'Color param defaults must be "#RRGGBB" hex strings, not arrays.',
     'Keep shaders self-contained: no texture/image inputs, procedural only.',
   ].join(' ');
 }
@@ -1852,7 +1935,13 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('apply-wallpaper', async (_event, result: GenerationResult) => {
-    const outDir = path.join(app.getPath('userData'), 'wallpapers', Date.now().toString());
+    // M0 confirmed: Lively's `setwp --file` only recognizes packages already inside
+    // its own Library folder, not an arbitrary path — see m0-validation-notes.md.
+    const localAppData = process.env.LOCALAPPDATA;
+    if (!localAppData) {
+      throw new Error('LOCALAPPDATA environment variable is not set');
+    }
+    const outDir = path.join(localAppData, 'Lively Wallpaper', 'Library', 'wallpapers', `cwe-${Date.now()}`);
     buildLivelyPackage(result, outDir);
     const config = loadLivelyCliConfig(path.join(app.getAppPath(), 'scripts', 'lively-cli-config.json'));
     await setWallpaper(config, outDir);
