@@ -45,12 +45,18 @@ export class AnthropicShaderClient implements ClaudeShaderClient {
       model: 'claude-sonnet-5',
       max_tokens: 4096,
       system: buildSystemPrompt(),
-      tools: [TOOL_SCHEMA as any],
+      // TOOL_SCHEMA is declared `as const` for literal precision elsewhere; the SDK's
+      // Tool type expects mutable arrays (e.g. `required: string[]`), so a direct
+      // structural cast is rejected. `as unknown as Tool` bridges that one known-safe
+      // mismatch while still checking the rest of the shape against the real SDK type.
+      tools: [TOOL_SCHEMA as unknown as Anthropic.Messages.Tool],
       tool_choice: { type: 'tool', name: 'emit_wallpaper_shader' },
       messages: [{ role: 'user', content: buildUserMessage(prompt, priorCode, compileError) }],
     });
 
-    const toolUse = response.content.find((block: any) => block.type === 'tool_use') as any;
+    const toolUse = response.content.find(
+      (block): block is Anthropic.Messages.ToolUseBlock => block.type === 'tool_use'
+    );
     if (!toolUse) {
       throw new Error('Claude did not return a tool_use block');
     }
