@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import PromptBox from './components/PromptBox';
 import PreviewPane from './components/PreviewPane';
+import ApplyButton from './components/ApplyButton';
 import type { GenerationResult } from '../../core/generation/types';
 
 export default function App() {
@@ -27,6 +28,7 @@ export default function App() {
       <PromptBox onSubmit={handleSubmit} isGenerating={isGenerating} />
       {error && <div className="error">{error}</div>}
       <PreviewPane result={result} />
+      <ApplyButton result={result} />
     </div>
   );
 }

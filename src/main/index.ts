@@ -5,6 +5,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { AnthropicShaderClient } from '../core/generation/claudeClient';
 import { generateScene } from '../core/generation/engine';
 import { validateShaderInChromium, closeValidatorWindow } from './offscreenValidator';
+import { buildLivelyPackage } from '../core/desktop/livelyPackage';
+import { loadLivelyCliConfig, setWallpaper } from '../core/desktop/livelyCli';
+import type { GenerationResult } from '../core/generation/types';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -45,6 +48,28 @@ app.whenReady().then(() => {
     }
     const client = new AnthropicShaderClient(new Anthropic({ apiKey }));
     return generateScene(client, validateShaderInChromium, prompt);
+  });
+
+  ipcMain.handle('apply-wallpaper', async (_event, result: GenerationResult) => {
+    // M0 confirmed: Lively's `setwp --file` only recognizes packages already inside
+    // its own Library folder, not an arbitrary path — see m0-validation-notes.md.
+    const localAppData = process.env.LOCALAPPDATA;
+    if (!localAppData) {
+      throw new Error('LOCALAPPDATA environment variable is not set');
+    }
+    const outDir = path.join(
+      localAppData,
+      'Lively Wallpaper',
+      'Library',
+      'wallpapers',
+      `cwe-${Date.now()}`
+    );
+    buildLivelyPackage(result, outDir);
+    const config = loadLivelyCliConfig(
+      path.join(app.getAppPath(), 'scripts', 'lively-cli-config.json')
+    );
+    await setWallpaper(config, outDir);
+    return { appliedPath: outDir };
   });
 });
 
