@@ -1,3 +1,4 @@
+// @ts-ignore - gl module doesn't have TypeScript definitions
 import createGL from 'gl';
 
 export interface CompileResult {

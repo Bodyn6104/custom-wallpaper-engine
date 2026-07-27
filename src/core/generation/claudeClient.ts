@@ -45,12 +45,12 @@ export class AnthropicShaderClient implements ClaudeShaderClient {
       model: 'claude-sonnet-5',
       max_tokens: 4096,
       system: buildSystemPrompt(),
-      tools: [TOOL_SCHEMA],
+      tools: [TOOL_SCHEMA as any],
       tool_choice: { type: 'tool', name: 'emit_wallpaper_shader' },
       messages: [{ role: 'user', content: buildUserMessage(prompt, priorCode, compileError) }],
     });
 
-    const toolUse = response.content.find((block: any) => block.type === 'tool_use');
+    const toolUse = response.content.find((block: any) => block.type === 'tool_use') as any;
     if (!toolUse) {
       throw new Error('Claude did not return a tool_use block');
     }
