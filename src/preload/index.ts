@@ -1,4 +1,8 @@
 // src/preload/index.ts
-import { contextBridge } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
+import type { GenerationResult } from '../core/generation/types';
 
-contextBridge.exposeInMainWorld('cwe', {});
+contextBridge.exposeInMainWorld('cwe', {
+  generateScene: (prompt: string): Promise<GenerationResult> =>
+    ipcRenderer.invoke('generate-scene', prompt),
+});

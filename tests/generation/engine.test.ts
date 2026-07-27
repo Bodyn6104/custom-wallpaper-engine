@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { generateScene } from '../../src/core/generation/engine';
 import { GenerationFailedError } from '../../src/core/generation/types';
+import { compileFragmentShader } from '../../src/core/generation/shaderValidator';
 import type { ClaudeShaderClient } from '../../src/core/generation/claudeClient';
 
 const GOOD_SHADER = `void main() { gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); }`;
@@ -16,7 +17,7 @@ describe('generateScene', () => {
     const client: ClaudeShaderClient = {
       requestShader: vi.fn().mockResolvedValue(makeResult(GOOD_SHADER)),
     };
-    const result = await generateScene(client, 'a red field');
+    const result = await generateScene(client, compileFragmentShader, 'a red field');
     expect(result.shaderCode).toBe(GOOD_SHADER);
     expect(client.requestShader).toHaveBeenCalledTimes(1);
   });
@@ -27,18 +28,32 @@ describe('generateScene', () => {
       .mockResolvedValueOnce(makeResult(BAD_SHADER))
       .mockResolvedValueOnce(makeResult(GOOD_SHADER));
     const client: ClaudeShaderClient = { requestShader };
-    const result = await generateScene(client, 'a red field');
+    const result = await generateScene(client, compileFragmentShader, 'a red field');
     expect(result.shaderCode).toBe(GOOD_SHADER);
     expect(requestShader).toHaveBeenCalledTimes(2);
     const secondCallArgs = requestShader.mock.calls[1];
     expect(secondCallArgs[2]).toBeTruthy();
   });
 
+  // The Electron main process injects a Chromium-backed validator instead of
+  // headless-gl, so the engine must use whatever it is given rather than importing
+  // a validator itself, and must tolerate an async one.
+  it('uses the injected validator and awaits an async result', async () => {
+    const client: ClaudeShaderClient = {
+      requestShader: vi.fn().mockResolvedValue(makeResult(BAD_SHADER)),
+    };
+    const validate = vi.fn().mockResolvedValue({ success: true });
+    const result = await generateScene(client, validate, 'a red field');
+    expect(validate).toHaveBeenCalledWith(BAD_SHADER);
+    expect(result.shaderCode).toBe(BAD_SHADER);
+    expect(client.requestShader).toHaveBeenCalledTimes(1);
+  });
+
   it('throws GenerationFailedError after exhausting retries', async () => {
     const client: ClaudeShaderClient = {
       requestShader: vi.fn().mockResolvedValue(makeResult(BAD_SHADER)),
     };
-    await expect(generateScene(client, 'a red field')).rejects.toThrow(GenerationFailedError);
+    await expect(generateScene(client, compileFragmentShader, 'a red field')).rejects.toThrow(GenerationFailedError);
     expect(client.requestShader).toHaveBeenCalledTimes(3);
   });
 });

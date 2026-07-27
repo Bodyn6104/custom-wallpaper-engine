@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AnthropicShaderClient } from '../src/core/generation/claudeClient';
 import { generateScene } from '../src/core/generation/engine';
+import { compileFragmentShader } from '../src/core/generation/shaderValidator';
 
 async function main() {
   const prompt = process.argv[2];
@@ -21,7 +22,7 @@ async function main() {
   const client = new AnthropicShaderClient(new Anthropic({ apiKey }));
 
   console.log(`Generating: "${prompt}"...`);
-  const result = await generateScene(client, prompt);
+  const result = await generateScene(client, compileFragmentShader, prompt);
 
   const outDir = path.join('data', 'cli-output', Date.now().toString());
   fs.mkdirSync(outDir, { recursive: true });

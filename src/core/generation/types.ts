@@ -17,6 +17,22 @@ export interface GenerationResult {
   isAnimated: boolean;
 }
 
+export interface CompileResult {
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Compiles a fragment shader and reports whether it is valid.
+ *
+ * Injected into generateScene rather than imported, because the two runtimes
+ * validate differently: the Node/CLI path uses headless-gl, while Electron uses
+ * a hidden Chromium window (headless-gl is a native addon built for Node's ABI
+ * and cannot load in Electron). Declared here, not in shaderValidator.ts, so
+ * that importing this type never pulls in the native `gl` binding.
+ */
+export type ShaderValidator = (source: string) => CompileResult | Promise<CompileResult>;
+
 export class GenerationFailedError extends Error {
   constructor(message: string, public lastCompileError?: string) {
     super(message);

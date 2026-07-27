@@ -1,9 +1,7 @@
 import createGL from 'gl';
+import { CompileResult } from './types';
 
-export interface CompileResult {
-  success: boolean;
-  error?: string;
-}
+export type { CompileResult };
 
 const VERTEX_SHADER = `
 attribute vec2 position;

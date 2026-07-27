@@ -1,12 +1,12 @@
 // src/core/generation/engine.ts
 import { ClaudeShaderClient } from './claudeClient';
-import { compileFragmentShader } from './shaderValidator';
-import { GenerationResult, GenerationFailedError } from './types';
+import { GenerationResult, GenerationFailedError, ShaderValidator } from './types';
 
 const MAX_RETRIES = 2;
 
 export async function generateScene(
   client: ClaudeShaderClient,
+  validateShader: ShaderValidator,
   prompt: string,
   priorCode?: string
 ): Promise<GenerationResult> {
@@ -15,7 +15,7 @@ export async function generateScene(
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const result = await client.requestShader(prompt, currentPriorCode, lastError);
-    const compile = compileFragmentShader(result.shaderCode);
+    const compile = await validateShader(result.shaderCode);
 
     if (compile.success) {
       return result;
