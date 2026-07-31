@@ -59,30 +59,38 @@ export function buildLivelyProperties(params: ShaderParam[]): Record<string, unk
   return properties;
 }
 
-function glslUniformType(type: ShaderParam['type']): string {
-  if (type === 'color') return 'vec3';
-  if (type === 'bool') return 'bool';
-  return 'float';
+/**
+ * GLSL has no string literals, so `</script` can only ever appear inside a shader
+ * comment — but it still closes the host <script> block and turns whatever follows
+ * into live markup. Neutralised here rather than by switching the page to
+ * fetch('shader.frag'): Lively serves these pages from disk, and fetch() against a
+ * file:// origin is blocked by Chromium's CORS rules.
+ */
+function escapeForScriptBlock(source: string): string {
+  return source.replace(/<\/script/gi, '<\\/script');
 }
 
 function buildIndexHtml(result: GenerationResult): string {
-  const uniformDecls = result.params
-    .map((p) => `uniform ${glslUniformType(p.type)} u_${p.name};`)
-    .join('\n');
-
   const defaultValues = Object.fromEntries(result.params.map((p) => [p.name, p.default]));
 
+  // JSON.stringify, not '${p.name}' — the name is written into executable JavaScript,
+  // and a quote in it would otherwise end the string and run whatever came next.
   const uniformSetters = result.params
     .map((p) => {
+      const key = JSON.stringify(p.name);
       if (p.type === 'color')
-        return `  if (uniformLocs['${p.name}']) gl.uniform3fv(uniformLocs['${p.name}'], hexToVec3(values['${p.name}']));`;
-      if (p.type === 'bool') return `  if (uniformLocs['${p.name}']) gl.uniform1i(uniformLocs['${p.name}'], values['${p.name}'] ? 1 : 0);`;
-      return `  if (uniformLocs['${p.name}']) gl.uniform1f(uniformLocs['${p.name}'], values['${p.name}']);`;
+        return `  if (uniformLocs[${key}]) gl.uniform3fv(uniformLocs[${key}], hexToVec3(values[${key}]));`;
+      if (p.type === 'bool')
+        return `  if (uniformLocs[${key}]) gl.uniform1i(uniformLocs[${key}], values[${key}] ? 1 : 0);`;
+      return `  if (uniformLocs[${key}]) gl.uniform1f(uniformLocs[${key}], values[${key}]);`;
     })
     .join('\n');
 
   const uniformLookups = result.params
-    .map((p) => `uniformLocs['${p.name}'] = gl.getUniformLocation(program, 'u_${p.name}');`)
+    .map(
+      (p) =>
+        `  uniformLocs[${JSON.stringify(p.name)}] = gl.getUniformLocation(program, ${JSON.stringify(`u_${p.name}`)});`
+    )
     .join('\n');
 
   return `<!DOCTYPE html>
@@ -94,8 +102,7 @@ function buildIndexHtml(result: GenerationResult): string {
 <body>
 <canvas id="c"></canvas>
 <script id="frag" type="x-shader/x-fragment">
-${uniformDecls}
-${result.shaderCode}
+${escapeForScriptBlock(result.shaderCode)}
 </script>
 <script>
 const canvas = document.getElementById('c');
@@ -122,32 +129,27 @@ function hexToVec3(hex) {
 const vsSource = 'attribute vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }';
 const fsSource = document.getElementById('frag').textContent;
 
-function compile(type, source) {
+// Without this the only symptom of a bad shader is a black desktop, with the
+// actual GLSL diagnostic discarded.
+function showError(message) {
+  console.error(message);
+  const pre = document.createElement('pre');
+  pre.textContent = message;
+  pre.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;margin:0;padding:16px;overflow:auto;color:#ff6b6b;background:#000;font:12px/1.5 monospace;white-space:pre-wrap;';
+  document.body.appendChild(pre);
+}
+
+function compile(type, source, label) {
   const shader = gl.createShader(type);
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    showError(label + ' shader failed to compile:\n\n' + gl.getShaderInfoLog(shader));
+    gl.deleteShader(shader);
+    return null;
+  }
   return shader;
 }
-
-const vs = compile(gl.VERTEX_SHADER, vsSource);
-const fs = compile(gl.FRAGMENT_SHADER, fsSource);
-const program = gl.createProgram();
-gl.attachShader(program, vs);
-gl.attachShader(program, fs);
-gl.linkProgram(program);
-gl.useProgram(program);
-
-const buffer = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
-const positionLoc = gl.getAttribLocation(program, 'position');
-gl.enableVertexAttribArray(positionLoc);
-gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
-
-const iTimeLoc = gl.getUniformLocation(program, 'iTime');
-const iResolutionLoc = gl.getUniformLocation(program, 'iResolution');
-const uniformLocs = {};
-${uniformLookups}
 
 const values = ${JSON.stringify(defaultValues)};
 
@@ -157,19 +159,50 @@ window.livelyPropertyListener = function(name, value) {
   }
 };
 
-function setUniforms() {
-${uniformSetters}
+const vs = compile(gl.VERTEX_SHADER, vsSource, 'Vertex');
+const fs = compile(gl.FRAGMENT_SHADER, fsSource, 'Fragment');
+let program = null;
+if (vs && fs) {
+  program = gl.createProgram();
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    showError('Shader program failed to link:\n\n' + gl.getProgramInfoLog(program));
+    gl.deleteProgram(program);
+    program = null;
+  }
 }
 
-const start = performance.now();
-function frame(now) {
-  gl.uniform1f(iTimeLoc, (now - start) / 1000);
-  gl.uniform2f(iResolutionLoc, canvas.width, canvas.height);
-  setUniforms();
-  gl.drawArrays(gl.TRIANGLES, 0, 3);
+if (program) {
+  gl.useProgram(program);
+
+  const buffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const positionLoc = gl.getAttribLocation(program, 'position');
+  gl.enableVertexAttribArray(positionLoc);
+  gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+  const iTimeLoc = gl.getUniformLocation(program, 'iTime');
+  const iResolutionLoc = gl.getUniformLocation(program, 'iResolution');
+  const uniformLocs = {};
+${uniformLookups}
+
+  function setUniforms() {
+${uniformSetters}
+  }
+
+  const start = performance.now();
+  function frame(now) {
+    gl.uniform1f(iTimeLoc, (now - start) / 1000);
+    gl.uniform2f(iResolutionLoc, canvas.width, canvas.height);
+    setUniforms();
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    requestAnimationFrame(frame);
+  }
   requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
 </script>
 </body>
 </html>`;

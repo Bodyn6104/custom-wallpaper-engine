@@ -36,6 +36,57 @@ describe('AnthropicShaderClient', () => {
     await expect(client.requestShader('a nebula')).rejects.toThrow('did not return a tool_use block');
   });
 
+  // The harness no longer injects `uniform <type> u_<name>;` declarations, so the
+  // model has to declare them itself or the shader won't compile at all.
+  it('tells the model to declare each param as a u_<name> uniform itself', async () => {
+    const fake = fakeAnthropicClient({
+      shaderCode: 'void main(){}',
+      params: [],
+      suggestedTitle: 'T',
+      isAnimated: true,
+    });
+    await new AnthropicShaderClient(fake).requestShader('a nebula');
+    const system = fake.messages.create.mock.calls[0][0].system;
+    expect(system).toContain('u_');
+    expect(system).toMatch(/declare/i);
+  });
+
+  it('throws a clear error when the response was truncated instead of returning partial fields', async () => {
+    const fake = {
+      messages: {
+        create: vi.fn().mockResolvedValue({
+          stop_reason: 'max_tokens',
+          content: [{ type: 'tool_use', name: 'emit_wallpaper_shader', input: { shaderCode: 'void main(){' } }],
+        }),
+      },
+    } as any;
+    await expect(new AnthropicShaderClient(fake).requestShader('a nebula')).rejects.toThrow(/truncated/i);
+  });
+
+  // Without this, a malformed tool response propagates `undefined` into
+  // livelyPackage.ts's params.map and crashes in the main process instead.
+  it('rejects a tool response whose params are missing', async () => {
+    const fake = fakeAnthropicClient({ shaderCode: 'void main(){}', suggestedTitle: 'T', isAnimated: true });
+    await expect(new AnthropicShaderClient(fake).requestShader('a nebula')).rejects.toThrow(/params/i);
+  });
+
+  it('rejects a tool response whose shaderCode is not a string', async () => {
+    const fake = fakeAnthropicClient({ shaderCode: 42, params: [], suggestedTitle: 'T', isAnimated: true });
+    await expect(new AnthropicShaderClient(fake).requestShader('a nebula')).rejects.toThrow(/shaderCode/i);
+  });
+
+  // Param names are interpolated into the generated wallpaper page's JavaScript,
+  // and Lively additionally requires a lowercase-first identifier.
+  it('rejects a param name that is not a plain lowercase-first identifier', async () => {
+    const fake = fakeAnthropicClient({
+      shaderCode: 'void main(){}',
+      params: [{ name: "x'];alert(1);//", type: 'float', default: 1, label: 'Bad' }],
+      suggestedTitle: 'T',
+      isAnimated: true,
+    });
+    await expect(new AnthropicShaderClient(fake).requestShader('a nebula')).rejects.toThrow(/param name/i);
+  });
+
   it('includes the compile error in the message when retrying', async () => {
     const fake = fakeAnthropicClient({
       shaderCode: 'void main(){}',

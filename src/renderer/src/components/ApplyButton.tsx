@@ -8,14 +8,19 @@ interface ApplyButtonProps {
 
 export default function ApplyButton({ result }: ApplyButtonProps) {
   const [status, setStatus] = useState<'idle' | 'applying' | 'applied' | 'error'>('idle');
+  const [error, setError] = useState<string | null>(null);
 
   async function handleClick() {
     if (!result) return;
     setStatus('applying');
+    setError(null);
     try {
       await window.cwe.applyWallpaper(result);
       setStatus('applied');
-    } catch {
+    } catch (e) {
+      // "Lively is not installed", "LOCALAPPDATA unset" and "package write failed"
+      // are otherwise indistinguishable to the user.
+      setError(e instanceof Error ? e.message : String(e));
       setStatus('error');
     }
   }
@@ -30,8 +35,15 @@ export default function ApplyButton({ result }: ApplyButtonProps) {
           : 'Apply to Desktop';
 
   return (
-    <button onClick={handleClick} disabled={!result || status === 'applying'}>
-      {label}
-    </button>
+    <>
+      <button onClick={handleClick} disabled={!result || status === 'applying'}>
+        {label}
+      </button>
+      {status === 'error' && error && (
+        <p className="apply-error" role="alert">
+          {error}
+        </p>
+      )}
+    </>
   );
 }

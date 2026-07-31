@@ -25,12 +25,21 @@ describe('PreviewPane', () => {
   });
 });
 
-// The preview must compile the same source the Lively package does (livelyPackage.ts
-// buildIndexHtml), or the desktop wallpaper won't match what the user previewed.
+// This previously asserted that a param-uniform preamble was PREPENDED here, which
+// is the defect the final whole-branch review caught: the preamble landed above the
+// shader's own `precision mediump float;` (a hard GLSL ES 1.00 error) and redeclared
+// uniforms the model had already declared, while generateScene validated the raw
+// shader and saw none of it. The model now declares its own u_<param> uniforms, so
+// the source that is validated, previewed, and written to the package is one string.
 describe('buildFragmentSource', () => {
-  it('prepends a uniform declaration per param, matching the Lively package preamble', () => {
+  it('returns the generated shader unchanged, so the validated source is the rendered source', () => {
+    const shaderCode = `precision mediump float;
+uniform float u_speed;
+uniform vec3 u_tint;
+uniform bool u_glow;
+void main(){ gl_FragColor = vec4(u_tint * u_speed, u_glow ? 1.0 : 0.5); }`;
     const source = buildFragmentSource({
-      shaderCode: 'void main(){}',
+      shaderCode,
       params: [
         { name: 'speed', type: 'float', default: 0.5, label: 'Speed' },
         { name: 'tint', type: 'color', default: '#ff0000', label: 'Tint' },
@@ -39,10 +48,7 @@ describe('buildFragmentSource', () => {
       suggestedTitle: 'T',
       isAnimated: true,
     });
-    expect(source).toContain('uniform float u_speed;');
-    expect(source).toContain('uniform vec3 u_tint;');
-    expect(source).toContain('uniform bool u_glow;');
-    expect(source.indexOf('uniform float u_speed;')).toBeLessThan(source.indexOf('void main(){}'));
+    expect(source).toBe(shaderCode);
   });
 });
 

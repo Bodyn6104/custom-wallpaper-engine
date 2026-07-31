@@ -29,4 +29,17 @@ describe('ApplyButton', () => {
     await waitFor(() => expect(screen.getByText(/retry/i)).toBeInTheDocument());
     expect(screen.getByRole('button')).not.toBeDisabled();
   });
+
+  // "Lively is not installed", "LOCALAPPDATA unset" and "package write failed" were
+  // all indistinguishable from each other as a bare "Failed — retry".
+  it('shows the reason applying failed, not just that it failed', async () => {
+    (window as any).cwe.applyWallpaper = vi
+      .fn()
+      .mockRejectedValue(new Error('Lively CLI not found at the configured path'));
+    render(<ApplyButton result={fixture} />);
+    fireEvent.click(screen.getByRole('button'));
+    await waitFor(() =>
+      expect(screen.getByText(/Lively CLI not found at the configured path/i)).toBeInTheDocument()
+    );
+  });
 });

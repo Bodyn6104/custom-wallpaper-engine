@@ -49,6 +49,16 @@ describe('generateScene', () => {
     expect(client.requestShader).toHaveBeenCalledTimes(1);
   });
 
+  // lastCompileError is a field on the error object, and ipcMain.handle serialises
+  // only `message` across to the renderer — so the diagnostic has to be in the
+  // message itself or the user sees "failed after 2 retries" and nothing else.
+  it('puts the last compile error in the thrown message, not only on the error object', async () => {
+    const client: ClaudeShaderClient = {
+      requestShader: vi.fn().mockResolvedValue(makeResult(BAD_SHADER)),
+    };
+    await expect(generateScene(client, compileFragmentShader, 'a red field')).rejects.toThrow(/ERROR:/);
+  });
+
   it('throws GenerationFailedError after exhausting retries', async () => {
     const client: ClaudeShaderClient = {
       requestShader: vi.fn().mockResolvedValue(makeResult(BAD_SHADER)),

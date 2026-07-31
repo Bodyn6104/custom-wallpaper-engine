@@ -26,22 +26,22 @@ export default function PreviewPane({ result }: PreviewPaneProps) {
   return <canvas ref={canvasRef} className="preview-pane" width={960} height={540} />;
 }
 
-function glslUniformType(type: ShaderParam['type']): string {
-  if (type === 'color') return 'vec3';
-  if (type === 'bool') return 'bool';
-  return 'float';
-}
-
 /**
- * Builds the exact fragment source the Lively package compiles (livelyPackage.ts
- * buildIndexHtml): the generated shader declares iTime/iResolution itself, so only
- * the param uniforms are prepended. Kept identical so the preview matches the desktop.
+ * The exact fragment source that gets compiled — here, in the Lively package
+ * (livelyPackage.ts buildIndexHtml), and by the validator in generateScene.
+ *
+ * This is deliberately the identity function. It used to prepend a `uniform
+ * <type> u_<name>;` line per param, which put those declarations above the
+ * shader's own `precision mediump float;` — a hard GLSL ES 1.00 error — and
+ * redeclared uniforms the model had already written, while generateScene
+ * validated the raw shader and never saw either problem. The model now declares
+ * its own u_<param> uniforms (see buildSystemPrompt in claudeClient.ts).
+ *
+ * Kept as a named seam so that anything reintroducing composition has one place
+ * to do it, and one test (PreviewPane.test.tsx) forcing validation to follow.
  */
 export function buildFragmentSource(result: GenerationResult): string {
-  const uniformDecls = result.params
-    .map((p) => `uniform ${glslUniformType(p.type)} u_${p.name};`)
-    .join('\n');
-  return `${uniformDecls}\n${result.shaderCode}`;
+  return result.shaderCode;
 }
 
 /** Lively stores color params as "#RRGGBB" hex strings, not [r,g,b] arrays — convert here. */

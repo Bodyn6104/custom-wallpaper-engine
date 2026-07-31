@@ -25,8 +25,12 @@ export async function generateScene(
     currentPriorCode = result.shaderCode;
   }
 
+  // lastCompileError is kept on the error for programmatic use, but ipcMain.handle
+  // serialises only `message` to the renderer — so the diagnostic goes in both.
   throw new GenerationFailedError(
-    `Shader failed to compile after ${MAX_RETRIES} retries`,
+    lastError
+      ? `Shader failed to compile after ${MAX_RETRIES} retries. Last compiler error:\n${lastError}`
+      : `Shader failed to compile after ${MAX_RETRIES} retries`,
     lastError
   );
 }
