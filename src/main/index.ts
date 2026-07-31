@@ -7,7 +7,12 @@ import { generateScene } from '../core/generation/engine';
 import { validateShaderInChromium, closeValidatorWindow } from './offscreenValidator';
 import { buildLivelyPackage } from '../core/desktop/livelyPackage';
 import { loadLivelyCliConfig, setWallpaper } from '../core/desktop/livelyCli';
+import { loadEnvFile } from './loadEnv';
 import type { GenerationResult } from '../core/generation/types';
+
+// Before anything reads process.env.ANTHROPIC_API_KEY. A key exported in the shell
+// still wins — loadEnvFile does not overwrite variables that are already set.
+loadEnvFile(path.join(app.getAppPath(), '.env'));
 
 let mainWindow: BrowserWindow | null = null;
 
