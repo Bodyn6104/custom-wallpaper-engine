@@ -1,5 +1,5 @@
 // src/renderer/src/components/ApplyButton.tsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { GenerationResult } from '../../../core/generation/types';
 
 interface ApplyButtonProps {
@@ -9,6 +9,13 @@ interface ApplyButtonProps {
 export default function ApplyButton({ result }: ApplyButtonProps) {
   const [status, setStatus] = useState<'idle' | 'applying' | 'applied' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
+
+  // Status belongs to the result that was applied, not to the button. Without this,
+  // generating a new scene leaves "Applied ✓" showing for a scene never applied.
+  useEffect(() => {
+    setStatus('idle');
+    setError(null);
+  }, [result]);
 
   async function handleClick() {
     if (!result) return;

@@ -100,6 +100,15 @@ void main() {
     buildLivelyPackage(realistic, outDir);
     expect(extractEmbeddedFragmentSource(outDir).trim()).toBe(realistic.shaderCode.trim());
   });
+
+  // shader.frag used to be missing the param uniform declarations, because they
+  // lived in the preamble the page injected rather than in the shader itself.
+  it('is also what shader.frag contains, so that file compiles on its own', () => {
+    buildLivelyPackage(realistic, outDir);
+    const onDisk = fs.readFileSync(path.join(outDir, 'shader.frag'), 'utf-8');
+    expect(onDisk).toBe(realistic.shaderCode);
+    expect(compileFragmentShader(onDisk).success).toBe(true);
+  });
 });
 
 // buildLivelyPackage is a pure function reachable independently of the client's

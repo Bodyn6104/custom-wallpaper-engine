@@ -25,6 +25,18 @@ export function compileFragmentShader(source: string): CompileResult {
     gl.shaderSource(vs, VERTEX_SHADER);
     gl.compileShader(vs);
 
+    // VERTEX_SHADER is a constant that cannot be malformed, so a failure here means
+    // a broken GL context or driver, not a fault in the generated shader. Checked
+    // and labelled anyway: unchecked, it surfaced later as an opaque link error
+    // that read as though the generated fragment shader were to blame.
+    if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+      const error = gl.getShaderInfoLog(vs) || 'Unknown compile error';
+      return {
+        success: false,
+        error: `Vertex shader failed to compile — this indicates a broken GL context, not a problem with the generated shader: ${error}`,
+      };
+    }
+
     fs = gl.createShader(gl.FRAGMENT_SHADER)!;
     gl.shaderSource(fs, source);
     gl.compileShader(fs);

@@ -30,6 +30,26 @@ describe('ApplyButton', () => {
     expect(screen.getByRole('button')).not.toBeDisabled();
   });
 
+  // Otherwise the button still reads "Applied ✓" for a scene that was never applied.
+  it('resets when a new result arrives, so a stale Applied does not carry over', async () => {
+    const { rerender } = render(<ApplyButton result={fixture} />);
+    fireEvent.click(screen.getByRole('button'));
+    await waitFor(() => expect(screen.getByText(/applied/i)).toBeInTheDocument());
+
+    rerender(<ApplyButton result={{ ...fixture, suggestedTitle: 'A different scene' }} />);
+    expect(screen.getByRole('button')).toHaveTextContent(/apply to desktop/i);
+  });
+
+  it('clears a previous failure message when a new result arrives', async () => {
+    (window as any).cwe.applyWallpaper = vi.fn().mockRejectedValue(new Error('Lively not found'));
+    const { rerender } = render(<ApplyButton result={fixture} />);
+    fireEvent.click(screen.getByRole('button'));
+    await waitFor(() => expect(screen.getByText(/Lively not found/i)).toBeInTheDocument());
+
+    rerender(<ApplyButton result={{ ...fixture, suggestedTitle: 'A different scene' }} />);
+    expect(screen.queryByText(/Lively not found/i)).not.toBeInTheDocument();
+  });
+
   // "Lively is not installed", "LOCALAPPDATA unset" and "package write failed" were
   // all indistinguishable from each other as a bare "Failed — retry".
   it('shows the reason applying failed, not just that it failed', async () => {

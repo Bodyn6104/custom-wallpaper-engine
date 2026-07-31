@@ -65,6 +65,10 @@ app.whenReady().then(() => {
       `cwe-${Date.now()}`
     );
     buildLivelyPackage(result, outDir);
+    // Correct while running unpackaged: getAppPath() is the project root and
+    // scripts/ sits beside it. Once this is packaged, scripts/ will not be inside
+    // the asar unless it is declared as an extraResource — this path must be
+    // revisited then (there is no electron-builder config in the repo yet).
     const config = loadLivelyCliConfig(
       path.join(app.getAppPath(), 'scripts', 'lively-cli-config.json')
     );

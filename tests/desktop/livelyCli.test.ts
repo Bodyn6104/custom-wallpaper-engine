@@ -23,6 +23,13 @@ describe('loadLivelyCliConfig', () => {
   });
 });
 
+describe('buildWallpaperArgs {path} substitution', () => {
+  it('replaces every {path} occurrence in an argument, not just the first', () => {
+    const config = { executablePath: 'C:\\lively.exe', setWallpaperArgs: ['--file', '{path}\\index.html;{path}'] };
+    expect(buildWallpaperArgs(config, 'C:\\pkg')).toEqual(['--file', 'C:\\pkg\\index.html;C:\\pkg']);
+  });
+});
+
 describe('buildWallpaperArgs', () => {
   it('substitutes {path} in each arg', () => {
     const args = buildWallpaperArgs(

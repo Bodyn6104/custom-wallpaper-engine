@@ -33,6 +33,9 @@ describe('generateScene', () => {
     expect(requestShader).toHaveBeenCalledTimes(2);
     const secondCallArgs = requestShader.mock.calls[1];
     expect(secondCallArgs[2]).toBeTruthy();
+    // The retry has to carry the code that failed, not just the error, or the model
+    // is asked to fix a shader it cannot see.
+    expect(secondCallArgs[1]).toBe(BAD_SHADER);
   });
 
   // The Electron main process injects a Chromium-backed validator instead of
