@@ -3,3 +3,6 @@ dist/
 out/
 data/
 *.log
+.env
+devlog.txt
+.superpowers/
